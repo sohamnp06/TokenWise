@@ -1,0 +1,647 @@
+# ============================================================
+# TokenWise - RAG Context Compression
+# Root .gitignore
+# ============================================================
+
+
+# ============================================================
+# PYTHON
+# ============================================================
+
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Python build artifacts
+build/
+dist/
+*.egg-info/
+.eggs/
+
+# Packaging
+pip-wheel-metadata/
+MANIFEST
+MANIFEST.in
+
+# Test / coverage
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+.nox/
+.pyre/
+.mypy_cache/
+.dmypy.json
+dmypy.json
+.ruff_cache/
+
+# Type checking
+.pytype/
+.pyre/
+
+
+# ============================================================
+# VIRTUAL ENVIRONMENTS
+# ============================================================
+
+.venv/
+venv/
+env/
+ENV/
+env.bak/
+venv.bak/
+
+# Conda
+.conda/
+conda-env/
+
+
+# ============================================================
+# ENVIRONMENT VARIABLES / SECRETS
+# ============================================================
+
+.env
+.env.*
+!.env.example
+
+# Local secret/config files
+secrets/
+secrets.*
+*.pem
+*.key
+*.crt
+
+# API keys / credentials
+credentials.json
+service-account.json
+token.json
+
+
+# ============================================================
+# IDE / EDITOR
+# ============================================================
+
+# VS Code
+.vscode/
+*.code-workspace
+
+# Allow shared VS Code recommendations if desired
+!.vscode/extensions.json
+!.vscode/settings.json
+
+# JetBrains
+.idea/
+*.iml
+
+# Sublime
+*.sublime-project
+*.sublime-workspace
+
+# Vim
+*.swp
+*.swo
+
+# Emacs
+*~
+\#*\#
+
+
+# ============================================================
+# OS FILES
+# ============================================================
+
+# Windows
+Thumbs.db
+Thumbs.db:encryptable
+ehthumbs.db
+ehthumbs_vista.db
+Desktop.ini
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+
+# Linux
+.directory
+.Trash-*
+
+
+# ============================================================
+# JUPYTER NOTEBOOKS
+# ============================================================
+
+.ipynb_checkpoints/
+*.nbconvert.ipynb
+
+# Jupyter temporary files
+.jupyter/
+
+
+# ============================================================
+# DATASETS
+# ============================================================
+
+# Raw datasets
+data/raw/
+datasets/raw/
+
+# Large datasets
+*.csv
+*.tsv
+*.jsonl
+*.parquet
+*.feather
+*.h5
+*.hdf5
+
+# Excel datasets
+*.xlsx
+*.xls
+
+# ------------------------------------------------------------
+# IMPORTANT:
+# If you want small sample datasets committed to Git,
+# use something like:
+#
+# data/sample/
+#
+# and force-add them with:
+#
+# git add -f data/sample/example.csv
+# ------------------------------------------------------------
+
+
+# ============================================================
+# LOCAL DATA DIRECTORIES
+# ============================================================
+
+data/raw/
+data/processed/
+data/intermediate/
+
+datasets/
+local_data/
+
+# Uploaded documents
+uploads/
+uploaded_files/
+documents/
+docs_data/
+
+
+# ============================================================
+# VECTOR DATABASES / FAISS
+# ============================================================
+
+# FAISS indexes
+*.faiss
+*.index
+*.bin
+
+# Vector DB local storage
+vectorstore/
+vector_store/
+vector_db/
+vectordb/
+
+# Chroma
+chroma/
+chroma_db/
+.chroma/
+
+# LanceDB
+.lancedb/
+
+# Qdrant local storage
+qdrant_storage/
+
+# Weaviate local data
+weaviate_data/
+
+# Milvus local data
+milvus_data/
+
+
+# ============================================================
+# EMBEDDINGS
+# ============================================================
+
+embeddings/
+embedding_cache/
+embedding_cache/
+*.npy
+*.npz
+
+# Sentence-transformer generated files
+sentence_transformer_cache/
+
+
+# ============================================================
+# MACHINE LEARNING MODELS
+# ============================================================
+
+# Trained models
+models/
+model/
+checkpoints/
+checkpoint/
+outputs/
+runs/
+
+# Model files
+*.pt
+*.pth
+*.ckpt
+*.safetensors
+*.onnx
+*.pb
+*.pkl
+*.pickle
+*.joblib
+
+# TensorFlow
+*.h5
+*.keras
+
+# Hugging Face cache
+.huggingface/
+huggingface_cache/
+
+
+# ============================================================
+# HUGGING FACE / TRANSFORMERS CACHE
+# ============================================================
+
+.cache/
+.cache/huggingface/
+.cache/huggingface/hub/
+
+# Hugging Face model cache
+models--*/
+snapshots/
+
+# Transformers cache
+transformers_cache/
+
+
+# ============================================================
+# NLP LIBRARY CACHE
+# ============================================================
+
+# NLTK
+nltk_data/
+
+# spaCy
+spacy_data/
+
+# TextBlob
+textblob_data/
+
+
+# ============================================================
+# APPLICATION CACHE
+# ============================================================
+
+.cache/
+cache/
+caches/
+
+# General temporary files
+tmp/
+temp/
+.tmp/
+*.tmp
+*.temp
+
+# Pickle/cache artifacts
+*.cache
+*.pickle
+
+
+# ============================================================
+# LOGS
+# ============================================================
+
+logs/
+*.log
+*.log.*
+log.txt
+
+# Application logs
+app.log
+server.log
+uvicorn.log
+streamlit.log
+
+
+# ============================================================
+# EVALUATION RESULTS
+# ============================================================
+
+# Generated benchmark results
+results/
+evaluation_results/
+evaluation/
+benchmarks/results/
+
+# Generated metric files
+metrics/
+metrics.json
+metrics.csv
+evaluation.csv
+
+# Latency measurements
+latency_results/
+latency_logs/
+
+# Experiment outputs
+experiments/
+experiment_results/
+
+
+# ============================================================
+# DASHBOARD GENERATED FILES
+# ============================================================
+
+dashboard_output/
+streamlit_output/
+
+# Generated charts
+plots/
+charts/
+figures/
+
+# Generated reports
+reports/generated/
+generated_reports/
+
+
+# ============================================================
+# FASTAPI / UVICORN
+# ============================================================
+
+# Temporary API files
+*.pid
+
+# Uvicorn
+.uvicorn/
+
+
+# ============================================================
+# STREAMLIT
+# ============================================================
+
+.streamlit/secrets.toml
+
+# Streamlit cache
+.streamlit/cache/
+
+
+# ============================================================
+# DATABASES
+# ============================================================
+
+# SQLite
+*.db
+*.sqlite
+*.sqlite3
+
+# Local database directories
+database/
+db/
+local_db/
+
+
+# ============================================================
+# DOCKER
+# ============================================================
+
+# Docker local overrides
+docker-compose.override.yml
+
+# Docker volumes
+docker-volumes/
+.docker/
+
+# Docker environment files
+docker.env
+
+
+# ============================================================
+# NODE / REACT (IF FRONTEND IS ADDED)
+# ============================================================
+
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+.npm/
+.yarn/
+.pnpm-store/
+
+# Build outputs
+frontend/build/
+frontend/dist/
+frontend/.next/
+frontend/out/
+
+# React/Vite environment files
+frontend/.env
+frontend/.env.*
+!frontend/.env.example
+
+# Vite
+.vite/
+
+# Next.js
+.next/
+
+# Parcel
+.parcel-cache/
+
+
+# ============================================================
+# TYPESCRIPT
+# ============================================================
+
+*.tsbuildinfo
+
+
+# ============================================================
+# PLAYWRIGHT / TESTING
+# ============================================================
+
+test-results/
+playwright-report/
+blob-report/
+playwright/.cache/
+
+
+# ============================================================
+# REPORTS / DOCUMENTATION GENERATED FILES
+# ============================================================
+
+*.pdf
+
+# If you want to keep project documentation PDFs,
+# remove the *.pdf rule above.
+
+
+# ============================================================
+# SCREENSHOTS / DEMO OUTPUTS
+# ============================================================
+
+screenshots/
+demo_output/
+demo_outputs/
+recordings/
+*.mp4
+*.mov
+*.webm
+
+
+# ============================================================
+# GENERATED TEXT / JSON OUTPUT
+# ============================================================
+
+generated/
+generated_data/
+generated_context/
+compressed_context/
+retrieved_context/
+
+# Temporary LLM outputs
+llm_outputs/
+llm_cache/
+prompt_cache/
+
+
+# ============================================================
+# API / MODEL RESPONSE CACHE
+# ============================================================
+
+api_cache/
+response_cache/
+request_cache/
+
+
+# ============================================================
+# LOCAL CONFIGURATION
+# ============================================================
+
+config.local.*
+settings.local.*
+*.local.json
+*.local.yaml
+*.local.yml
+
+
+# ============================================================
+# SYSTEM / DEBUG
+# ============================================================
+
+debug/
+debug_output/
+profiling/
+profile_results/
+
+
+# ============================================================
+# SECURITY
+# ============================================================
+
+*.secret
+*.secrets
+*.credentials
+
+# SSH
+id_rsa
+id_rsa.pub
+
+# Certificates
+*.p12
+*.pfx
+
+
+# ============================================================
+# MAC / WINDOWS DEVELOPMENT
+# ============================================================
+
+# Windows Python launcher files
+pyvenv.cfg
+
+# macOS Python metadata
+.python-version
+
+
+# ============================================================
+# LOCAL LLM / OLLAMA
+# ============================================================
+
+# Ollama local models
+.ollama/
+ollama_models/
+
+# Generic local LLM storage
+llm_models/
+local_models/
+
+
+# ============================================================
+# CLOUD / DEPLOYMENT
+# ============================================================
+
+# Vercel
+.vercel/
+
+# Render
+.render/
+
+# Railway
+.railway/
+
+# Deployment artifacts
+deployment_output/
+
+
+# ============================================================
+# ZIP / ARCHIVE FILES
+# ============================================================
+
+*.zip
+*.tar
+*.tar.gz
+*.rar
+*.7z
+
+
+# ============================================================
+# LARGE GENERATED FILES
+# ============================================================
+
+*.bin
+*.weights
+*.model
+
+# Memory dumps
+*.dump
+*.core
+
+
+# ============================================================
+# OPTIONAL: KEEP EMPTY DIRECTORIES
+# ============================================================
+
+# Git doesn't track empty folders.
+# Add .gitkeep files if needed.
+
+
+# ============================================================
+# END OF TOKENWISE .gitignore
+# ============================================================
