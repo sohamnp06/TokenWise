@@ -347,7 +347,6 @@ streamlit.log
 # Generated benchmark results
 results/
 evaluation_results/
-evaluation/
 benchmarks/results/
 
 # Generated metric files
