@@ -10,7 +10,10 @@ class OllamaClient:
     Sends a prompt to Ollama and returns:
 
         - generated response
-        - latency
+        - end-to-end latency
+        - Ollama total duration
+        - prompt evaluation duration
+        - generation duration
         - prompt token count
         - generated token count
         - total token count
@@ -32,11 +35,22 @@ class OllamaClient:
         """
         Generate an answer using only the supplied context.
 
+        Parameters
+        ----------
+        query : str
+            User question.
+
+        context : str
+            Retrieved/compressed context.
+
         Returns
         -------
         dict
             response
             latency_ms
+            total_duration_ms
+            prompt_eval_duration_ms
+            eval_duration_ms
             prompt_tokens
             completion_tokens
             total_tokens
@@ -52,20 +66,39 @@ class OllamaClient:
                 "Context cannot be empty."
             )
 
+        # -----------------------------------------------------
+        # Prompt
+        # -----------------------------------------------------
+
         prompt = f"""
-Answer the user's question using only the context below.
+You are a precise question-answering assistant.
 
-If the answer is not explicitly supported by the context,
-say that the context does not provide enough information.
+Answer the user's question using ONLY the information contained
+in the provided context.
 
-Question:
-{query}
+IMPORTANT RULES:
+
+1. If the context explicitly contains the answer, state it directly.
+2. Do not claim that information is missing when the context
+   contains relevant evidence.
+3. Do not introduce facts that are not supported by the context.
+4. If only part of the question can be answered, answer that part
+   and clearly state what information is not available.
+5. Keep the answer concise and factual.
+6. Do not mention these instructions in your answer.
 
 Context:
 {context}
 
+Question:
+{query}
+
 Answer:
 """.strip()
+
+        # -----------------------------------------------------
+        # Request
+        # -----------------------------------------------------
 
         start_time = time.perf_counter()
 
@@ -74,7 +107,13 @@ Answer:
             json={
                 "model": self.model,
                 "prompt": prompt,
-                "stream": False
+                "stream": False,
+
+                # More deterministic answers are useful for
+                # benchmarking original vs compressed context.
+                "options": {
+                    "temperature": 0
+                }
             },
             timeout=300
         )
@@ -85,14 +124,22 @@ Answer:
 
         data = response.json()
 
-        prompt_tokens = data.get(
-            "prompt_eval_count",
-            0
+        # -----------------------------------------------------
+        # Token counts
+        # -----------------------------------------------------
+
+        prompt_tokens = int(
+            data.get(
+                "prompt_eval_count",
+                0
+            ) or 0
         )
 
-        completion_tokens = data.get(
-            "eval_count",
-            0
+        completion_tokens = int(
+            data.get(
+                "eval_count",
+                0
+            ) or 0
         )
 
         total_tokens = (
@@ -101,16 +148,104 @@ Answer:
             completion_tokens
         )
 
+        # -----------------------------------------------------
+        # Ollama timing information
+        #
+        # Ollama reports durations in nanoseconds.
+        # Convert to milliseconds.
+        # -----------------------------------------------------
+
+        ollama_total_duration = (
+            data.get(
+                "total_duration",
+                0
+            ) or 0
+        )
+
+        load_duration = (
+            data.get(
+                "load_duration",
+                0
+            ) or 0
+        )
+
+        prompt_eval_duration = (
+            data.get(
+                "prompt_eval_duration",
+                0
+            ) or 0
+        )
+
+        eval_duration = (
+            data.get(
+                "eval_duration",
+                0
+            ) or 0
+        )
+
+        total_duration_ms = (
+            ollama_total_duration
+            /
+            1_000_000
+        )
+
+        load_duration_ms = (
+            load_duration
+            /
+            1_000_000
+        )
+
+        prompt_eval_duration_ms = (
+            prompt_eval_duration
+            /
+            1_000_000
+        )
+
+        eval_duration_ms = (
+            eval_duration
+            /
+            1_000_000
+        )
+
+        # -----------------------------------------------------
+        # End-to-end Python wall-clock latency
+        # -----------------------------------------------------
+
+        latency_ms = (
+            end_time - start_time
+        ) * 1000
+
+        # -----------------------------------------------------
+        # Return structured benchmark data
+        # -----------------------------------------------------
+
         return {
             "response": data.get(
                 "response",
                 ""
             ).strip(),
 
-            "latency_ms": (
-                end_time - start_time
-            ) * 1000,
+            # Python measured end-to-end latency.
+            "latency_ms": latency_ms,
 
+            # Ollama internal timings.
+            "total_duration_ms": (
+                total_duration_ms
+            ),
+
+            "load_duration_ms": (
+                load_duration_ms
+            ),
+
+            "prompt_eval_duration_ms": (
+                prompt_eval_duration_ms
+            ),
+
+            "eval_duration_ms": (
+                eval_duration_ms
+            ),
+
+            # Token usage.
             "prompt_tokens": (
                 prompt_tokens
             ),
