@@ -1,10 +1,23 @@
 import re
 
-import spacy
+nlp = None
 
-
-# Load the lightweight spaCy English model.
-nlp = spacy.load("en_core_web_sm")
+def _get_nlp():
+    global nlp
+    if nlp is not None:
+        return nlp
+    try:
+        import spacy
+        try:
+            nlp = spacy.load("en_core_web_sm")
+        except Exception:
+            import spacy.cli
+            spacy.cli.download("en_core_web_sm")
+            nlp = spacy.load("en_core_web_sm")
+    except Exception as e:
+        print(f"Warning: spaCy model could not be loaded in evidence: {e}")
+        nlp = False
+    return nlp
 
 
 TECHNICAL_TERMS = {
@@ -131,10 +144,16 @@ def evidence_bonus(sentence: str) -> float:
     # 5. Named entity evidence
     # ---------------------------------------------------------
 
-    doc = nlp(sentence)
-
-    if doc.ents:
-        score += 0.15
+    spacy_nlp = _get_nlp()
+    if spacy_nlp:
+        try:
+            doc = spacy_nlp(sentence)
+            if doc.ents:
+                score += 0.15
+        except Exception:
+            pass
+    elif re.search(r'\b[A-Z][a-z]+(?:\s+[A-Z][a-z]+)*\b', sentence):
+        score += 0.10
 
     # ---------------------------------------------------------
     # 6. Technical term evidence
