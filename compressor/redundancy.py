@@ -19,11 +19,6 @@ class RedundancyDetector:
     ):
         """
         Initialize the sentence embedding model.
-
-        Parameters
-        ----------
-        model_name : str
-            Sentence Transformer model used for semantic similarity.
         """
 
         self.model_name = model_name
@@ -46,20 +41,12 @@ class RedundancyDetector:
     ) -> np.ndarray:
         """
         Convert sentences into normalized embeddings.
-
-        Parameters
-        ----------
-        sentences : list[str]
-            Sentences to encode.
-
-        Returns
-        -------
-        np.ndarray
-            Normalized sentence embeddings.
         """
 
         if not sentences:
-            return np.empty((0, 0))
+            return np.empty(
+                (0, 0)
+            )
 
         embeddings = self.model.encode(
             sentences,
@@ -76,20 +63,12 @@ class RedundancyDetector:
     ) -> np.ndarray:
         """
         Calculate pairwise semantic similarity.
-
-        Parameters
-        ----------
-        sentences : list[str]
-            Sentences to compare.
-
-        Returns
-        -------
-        np.ndarray
-            Pairwise cosine similarity matrix.
         """
 
         if not sentences:
-            return np.empty((0, 0))
+            return np.empty(
+                (0, 0)
+            )
 
         embeddings = self.encode(
             sentences
@@ -104,28 +83,12 @@ class RedundancyDetector:
         sentences: list[str]
     ) -> list[float]:
         """
-        Calculate a redundancy penalty for every sentence.
+        Calculate redundancy penalty for every sentence.
 
-        A sentence receives a higher penalty when it is
-        semantically similar to an earlier sentence.
+        Each sentence is compared against previous sentences.
 
-        For sentence i:
-
-            penalty(i) =
-                max(similarity(i, previous sentences))
-
-        The first sentence receives a penalty of 0 because
-        there are no previous sentences to compare against.
-
-        Parameters
-        ----------
-        sentences : list[str]
-            Sentences to evaluate.
-
-        Returns
-        -------
-        list[float]
-            Redundancy penalties between 0 and 1.
+        The penalty is the maximum semantic similarity
+        with any previous sentence.
         """
 
         if not sentences:
@@ -141,10 +104,12 @@ class RedundancyDetector:
             len(sentences)
         ):
 
-            # First sentence has nothing before it,
-            # so it cannot be redundant with a previous sentence.
             if i == 0:
-                penalties.append(0.0)
+
+                penalties.append(
+                    0.0
+                )
+
                 continue
 
             previous_similarities = similarity[
@@ -158,8 +123,6 @@ class RedundancyDetector:
                 )
             )
 
-            # Cosine similarity can theoretically produce
-            # tiny floating-point values outside [0, 1].
             max_similarity = max(
                 0.0,
                 min(
@@ -174,6 +137,23 @@ class RedundancyDetector:
 
         return penalties
 
+    def score(
+        self,
+        sentences: list[str]
+    ) -> list[float]:
+        """
+        Return redundancy scores for sentences.
+
+        This is the public scoring interface used by
+        the TokenWise compression pipeline.
+
+        Higher score means the sentence is more redundant.
+        """
+
+        return self.redundancy_penalties(
+            sentences
+        )
+
     def find_redundant_pairs(
         self,
         sentences: list[str],
@@ -181,20 +161,6 @@ class RedundancyDetector:
     ) -> list[dict]:
         """
         Find pairs of highly similar sentences.
-
-        Parameters
-        ----------
-        sentences : list[str]
-            Sentences to compare.
-
-        threshold : float
-            Similarity threshold above which two sentences
-            are considered potentially redundant.
-
-        Returns
-        -------
-        list[dict]
-            List of redundant sentence pairs.
         """
 
         if not sentences:
@@ -221,10 +187,12 @@ class RedundancyDetector:
 
                 if score >= threshold:
 
-                    redundant_pairs.append({
-                        "sentence_a": sentences[i],
-                        "sentence_b": sentences[j],
-                        "similarity": score
-                    })
+                    redundant_pairs.append(
+                        {
+                            "sentence_a": sentences[i],
+                            "sentence_b": sentences[j],
+                            "similarity": score
+                        }
+                    )
 
         return redundant_pairs

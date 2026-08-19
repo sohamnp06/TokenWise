@@ -1,242 +1,105 @@
-from compressor.sentence_splitter import (
-    split_sentences
-)
-
-from compressor.relevance import (
-    RelevanceScorer
-)
-
-from compressor.evidence import (
-    evidence_bonus
-)
-
-from compressor.redundancy import (
-    RedundancyDetector
-)
-
-from compressor.optimizer import (
-    TokenOptimizer
-)
-
-from compressor.coverage import (
-    calculate_coverage,
-    get_missing_concepts,
-    coverage_passed
-)
-
-from evaluation.metrics import (
-    count_tokens,
-    compression_ratio,
-    tokens_saved
+from compressor.sentence_splitter import split_sentences
+from compressor.relevance import RelevanceScorer
+from compressor.evidence import evidence_bonus
+from compressor.redundancy import RedundancyDetector
+from compressor.optimizer import TokenOptimizer
+from evaluation.metrics import count_tokens
+from evaluation.coverage import (
+    check_coverage,
+    concept_present
 )
 
 
 class TokenDiet:
     """
-    Main TokenWise context compression pipeline.
+    TokenWise context compression pipeline.
 
     Pipeline:
 
-        Query + Retrieved Context
-                    ↓
-              Sentence Splitting
-                    ↓
-              Relevance Scoring
-                    ↓
-               Evidence Bonus
-                    ↓
-             Redundancy Detection
-                    ↓
-             Final Sentence Score
-                    ↓
-               Token Value
-                    ↓
-           Budget-Constrained Selection
-                    ↓
-               Coverage Guard
-                    ↓
-              Compressed Context
+        Sentence splitting
+            ↓
+        Relevance scoring
+            ↓
+        Evidence scoring
+            ↓
+        Redundancy detection
+            ↓
+        Token optimization
+            ↓
+        Semantic coverage guard
+            ↓
+        Compressed context
     """
 
     def __init__(
         self,
         evidence_weight: float = 0.45,
         redundancy_weight: float = 0.25,
-        coverage_threshold: float = 0.80,
-        relevance_model: str = (
-            "cross-encoder/ms-marco-MiniLM-L-6-v2"
-        ),
-        redundancy_model: str = (
-            "all-MiniLM-L6-v2"
-        )
+        coverage_threshold: float = 0.80
     ):
-        """
-        Initialize all TokenWise components.
-        """
 
         self.coverage_threshold = (
             coverage_threshold
         )
 
-        # -----------------------------------------------------
-        # Relevance scorer
-        # -----------------------------------------------------
-
         self.relevance_scorer = (
-            RelevanceScorer(
-                model_name=relevance_model
-            )
+            RelevanceScorer()
         )
-
-        # -----------------------------------------------------
-        # Redundancy detector
-        # -----------------------------------------------------
 
         self.redundancy_detector = (
-            RedundancyDetector(
-                model_name=redundancy_model
-            )
+            RedundancyDetector()
         )
 
-        # -----------------------------------------------------
-        # Token optimizer
-        # -----------------------------------------------------
-
-        self.optimizer = (
-            TokenOptimizer(
-                evidence_weight=evidence_weight,
-                redundancy_weight=redundancy_weight
-            )
+        self.optimizer = TokenOptimizer(
+            evidence_weight=evidence_weight,
+            redundancy_weight=redundancy_weight
         )
 
-    def compress(
+    def _build_candidates(
         self,
         query: str,
-        context: str,
-        token_budget: int = 800
-    ) -> dict:
-        """
-        Compress retrieved context according to a token budget.
-        """
-
-        # -----------------------------------------------------
-        # Input validation
-        # -----------------------------------------------------
-
-        if not query or not query.strip():
-            raise ValueError(
-                "Query cannot be empty."
-            )
-
-        if not context or not context.strip():
-            raise ValueError(
-                "Context cannot be empty."
-            )
-
-        if token_budget <= 0:
-            raise ValueError(
-                "Token budget must be greater than zero."
-            )
-
-        # -----------------------------------------------------
-        # 1. Sentence splitting
-        # -----------------------------------------------------
-
-        sentences = split_sentences(
-            context
-        )
-
-        if not sentences:
-
-            original_tokens = count_tokens(
-                context
-            )
-
-            return {
-                "compressed_context": "",
-                "kept": [],
-                "removed": [],
-                "coverage": 0.0,
-                "missing_concepts": [],
-                "original_tokens": original_tokens,
-                "compressed_tokens": 0,
-                "tokens_saved": original_tokens,
-                "compression_ratio": 100.0,
-                "total_sentences": 0,
-                "kept_sentences": 0,
-                "removed_sentences": 0,
-                "coverage_guard_passed": False,
-                "coverage_guard_triggered": False
-            }
-
-        # -----------------------------------------------------
-        # 2. Relevance scoring
-        # -----------------------------------------------------
+        sentences: list[str]
+    ) -> list[dict]:
 
         relevance_scores = (
             self.relevance_scorer.score(
-                query=query,
-                sentences=sentences
-            )
-        )
-
-        # -----------------------------------------------------
-        # 3. Evidence scoring
-        # -----------------------------------------------------
-
-        evidence_scores = [
-            evidence_bonus(sentence)
-            for sentence in sentences
-        ]
-
-        # -----------------------------------------------------
-        # 4. Redundancy scoring
-        # -----------------------------------------------------
-
-        redundancy_scores = (
-            self.redundancy_detector
-            .redundancy_penalties(
+                query,
                 sentences
             )
         )
 
-        # -----------------------------------------------------
-        # 5. Final sentence score
-        # -----------------------------------------------------
+        evidence_scores = [
+            evidence_bonus(
+                sentence
+            )
+            for sentence in sentences
+        ]
+
+        redundancy_scores = (
+            self.redundancy_detector.score(
+                sentences
+            )
+        )
 
         final_scores = (
             self.optimizer.calculate_scores(
-                relevance_scores=relevance_scores,
-                evidence_scores=evidence_scores,
-                redundancy_scores=redundancy_scores
+                relevance_scores,
+                evidence_scores,
+                redundancy_scores
             )
         )
-
-        # -----------------------------------------------------
-        # 6. Token value calculation
-        # -----------------------------------------------------
-        #
-        # IMPORTANT:
-        # Pass evidence_scores directly into the optimizer.
-        # This allows the selection stage to protect strong
-        # evidence sentences.
-        # -----------------------------------------------------
 
         candidates = (
             self.optimizer.calculate_token_values(
-                sentences=sentences,
-                scores=final_scores,
-                evidence_scores=evidence_scores
+                sentences,
+                final_scores,
+                evidence_scores
             )
         )
-
-        # Add scoring information to every candidate.
 
         for index, candidate in enumerate(
             candidates
         ):
-
-            candidate["index"] = index
 
             candidate["relevance"] = (
                 relevance_scores[index]
@@ -250,12 +113,212 @@ class TokenDiet:
                 redundancy_scores[index]
             )
 
-            candidate["decision"] = (
-                "PENDING"
+            candidate["score"] = (
+                final_scores[index]
+            )
+
+        return candidates
+
+    def _coverage_guard(
+        self,
+        query: str,
+        selected: list[dict],
+        removed: list[dict]
+    ) -> tuple[list[dict], list[dict], dict]:
+
+        compressed_context = " ".join(
+            candidate["sentence"]
+            for candidate in selected
+        )
+
+        coverage_result = check_coverage(
+            query=query,
+            context=compressed_context,
+            threshold=self.coverage_threshold
+        )
+
+        # -----------------------------------------------------
+        # Coverage already sufficient.
+        # -----------------------------------------------------
+
+        if coverage_result["passed"]:
+
+            return (
+                selected,
+                removed,
+                coverage_result
+            )
+
+        missing_concepts = set(
+            coverage_result[
+                "missing_concepts"
+            ]
+        )
+
+        recovery_candidates = []
+
+        # -----------------------------------------------------
+        # Search removed sentences for semantic equivalents
+        # of missing concepts.
+        # -----------------------------------------------------
+
+        for candidate in removed:
+
+            sentence = candidate[
+                "sentence"
+            ]
+
+            matches = 0
+
+            for concept in missing_concepts:
+
+                if concept_present(
+                    concept,
+                    sentence
+                ):
+
+                    matches += 1
+
+            if matches > 0:
+
+                recovery_candidates.append(
+                    (
+                        matches,
+                        candidate
+                    )
+                )
+
+        # -----------------------------------------------------
+        # Prefer candidates that:
+        #
+        # 1. Cover more missing concepts
+        # 2. Have higher evidence
+        # 3. Have higher relevance
+        # -----------------------------------------------------
+
+        recovery_candidates.sort(
+            key=lambda item: (
+                item[0],
+                item[1].get(
+                    "evidence",
+                    0.0
+                ),
+                item[1].get(
+                    "relevance",
+                    0.0
+                ),
+                item[1].get(
+                    "score",
+                    0.0
+                )
+            ),
+            reverse=True
+        )
+
+        # -----------------------------------------------------
+        # Recover sentences until coverage passes.
+        # -----------------------------------------------------
+
+        for (
+            _,
+            candidate
+        ) in recovery_candidates:
+
+            if candidate not in removed:
+                continue
+
+            selected.append(
+                candidate
+            )
+
+            removed.remove(
+                candidate
+            )
+
+            compressed_context = " ".join(
+                item["sentence"]
+                for item in selected
+            )
+
+            coverage_result = check_coverage(
+                query=query,
+                context=compressed_context,
+                threshold=self.coverage_threshold
+            )
+
+            if coverage_result["passed"]:
+
+                break
+
+        return (
+            selected,
+            removed,
+            coverage_result
+        )
+
+    def compress(
+        self,
+        query: str,
+        context: str,
+        token_budget: int
+    ) -> dict:
+
+        if not query or not query.strip():
+
+            raise ValueError(
+                "Query cannot be empty."
+            )
+
+        if not context or not context.strip():
+
+            raise ValueError(
+                "Context cannot be empty."
+            )
+
+        if token_budget <= 0:
+
+            raise ValueError(
+                "Token budget must be greater than zero."
             )
 
         # -----------------------------------------------------
-        # 7. Budget-constrained selection
+        # Sentence splitting
+        # -----------------------------------------------------
+
+        sentences = split_sentences(
+            context
+        )
+
+        if not sentences:
+
+            return {
+                "original_tokens": 0,
+                "compressed_tokens": 0,
+                "tokens_saved": 0,
+                "compression_ratio": 0.0,
+                "total_sentences": 0,
+                "kept_sentences": 0,
+                "removed_sentences": 0,
+                "coverage": 1.0,
+                "coverage_guard_passed": True,
+                "coverage_guard_triggered": False,
+                "compressed_context": "",
+                "kept": [],
+                "removed": [],
+                "missing_concepts": []
+            }
+
+        # -----------------------------------------------------
+        # Score candidates
+        # -----------------------------------------------------
+
+        candidates = self._build_candidates(
+            query=query,
+            sentences=sentences
+        )
+
+        # -----------------------------------------------------
+        # Optimize token budget
         # -----------------------------------------------------
 
         selected = self.optimizer.select(
@@ -263,172 +326,92 @@ class TokenDiet:
             token_budget=token_budget
         )
 
-        selected_indices = {
-            candidate["index"]
+        selected_ids = {
+            id(candidate)
             for candidate in selected
         }
-
-        # Mark selected sentences.
-
-        for candidate in candidates:
-
-            if candidate["index"] in selected_indices:
-
-                candidate["decision"] = "KEEP"
-
-            else:
-
-                candidate["decision"] = "REMOVE"
-
-        # -----------------------------------------------------
-        # 8. Build initial compressed context
-        # -----------------------------------------------------
-
-        # Keep original document order.
-
-        selected_by_index = sorted(
-            selected,
-            key=lambda item: item["index"]
-        )
-
-        compressed_context = " ".join(
-            candidate["sentence"]
-            for candidate in selected_by_index
-        )
-
-        # -----------------------------------------------------
-        # 9. Coverage Guard
-        # -----------------------------------------------------
-
-        coverage = calculate_coverage(
-            query=query,
-            compressed_context=compressed_context
-        )
-
-        guard_triggered = False
-
-        # -----------------------------------------------------
-        # 10. Restore best excluded sentence if coverage fails
-        # -----------------------------------------------------
-
-        if not coverage_passed(
-            coverage,
-            threshold=self.coverage_threshold
-        ):
-
-            guard_triggered = True
-
-            excluded = [
-                candidate
-                for candidate in candidates
-                if candidate["index"]
-                not in selected_indices
-            ]
-
-            # Prioritize excluded sentences by final score.
-
-            excluded.sort(
-                key=lambda item: item["score"],
-                reverse=True
-            )
-
-            # Restore sentences until coverage passes.
-
-            for candidate in excluded:
-
-                candidate_cost = (
-                    candidate["token_cost"]
-                )
-
-                current_tokens = count_tokens(
-                    compressed_context
-                )
-
-                if (
-                    current_tokens
-                    +
-                    candidate_cost
-                    >
-                    token_budget
-                ):
-                    continue
-
-                selected.append(
-                    candidate
-                )
-
-                selected_indices.add(
-                    candidate["index"]
-                )
-
-                candidate["decision"] = (
-                    "RESTORED"
-                )
-
-                selected_by_index = sorted(
-                    selected,
-                    key=lambda item: item["index"]
-                )
-
-                compressed_context = " ".join(
-                    item["sentence"]
-                    for item in selected_by_index
-                )
-
-                coverage = calculate_coverage(
-                    query=query,
-                    compressed_context=compressed_context
-                )
-
-                if coverage_passed(
-                    coverage,
-                    threshold=self.coverage_threshold
-                ):
-                    break
-
-        # -----------------------------------------------------
-        # 11. Final coverage check
-        # -----------------------------------------------------
-
-        coverage_passed_final = (
-            coverage_passed(
-                coverage,
-                threshold=self.coverage_threshold
-            )
-        )
-
-        # -----------------------------------------------------
-        # 12. Final kept / removed lists
-        # -----------------------------------------------------
-
-        kept = [
-            candidate
-            for candidate in candidates
-            if candidate["index"]
-            in selected_indices
-        ]
 
         removed = [
             candidate
             for candidate in candidates
-            if candidate["index"]
-            not in selected_indices
+            if id(candidate)
+            not in selected_ids
         ]
 
         # -----------------------------------------------------
-        # 13. Missing query concepts
+        # Coverage guard
         # -----------------------------------------------------
 
-        missing_concepts = (
-            get_missing_concepts(
-                query=query,
-                compressed_context=compressed_context
+        before_guard_count = len(
+            selected
+        )
+
+        (
+            selected,
+            removed,
+            coverage_result
+        ) = self._coverage_guard(
+            query=query,
+            selected=selected,
+            removed=removed
+        )
+
+        coverage_guard_triggered = (
+            len(selected)
+            !=
+            before_guard_count
+        )
+
+        # -----------------------------------------------------
+        # Mark decisions
+        # -----------------------------------------------------
+
+        for candidate in selected:
+
+            candidate["decision"] = (
+                "KEEP"
+            )
+
+        for candidate in removed:
+
+            candidate["decision"] = (
+                "REMOVE"
+            )
+
+        # -----------------------------------------------------
+        # Preserve original sentence order
+        # -----------------------------------------------------
+
+        sentence_positions = {
+            sentence: index
+            for index, sentence
+            in enumerate(sentences)
+        }
+
+        selected.sort(
+            key=lambda candidate:
+            sentence_positions.get(
+                candidate["sentence"],
+                999999
+            )
+        )
+
+        removed.sort(
+            key=lambda candidate:
+            sentence_positions.get(
+                candidate["sentence"],
+                999999
             )
         )
 
         # -----------------------------------------------------
-        # 14. Token metrics
+        # Build compressed context
         # -----------------------------------------------------
+
+        compressed_context = " ".join(
+            candidate["sentence"]
+            for candidate in selected
+        )
 
         original_tokens = count_tokens(
             context
@@ -438,60 +421,78 @@ class TokenDiet:
             compressed_context
         )
 
-        saved_tokens = tokens_saved(
-            original_tokens=original_tokens,
-            compressed_tokens=compressed_tokens
+        tokens_saved = (
+            original_tokens
+            -
+            compressed_tokens
         )
 
-        saved_ratio = compression_ratio(
-            original_tokens=original_tokens,
-            compressed_tokens=compressed_tokens
-        )
+        if original_tokens > 0:
+
+            compression_ratio = (
+                tokens_saved
+                /
+                original_tokens
+            ) * 100
+
+        else:
+
+            compression_ratio = 0.0
 
         # -----------------------------------------------------
-        # 15. Final result
+        # Final coverage
         # -----------------------------------------------------
+
+        final_coverage = check_coverage(
+            query=query,
+            context=compressed_context,
+            threshold=self.coverage_threshold
+        )
 
         return {
-            "compressed_context":
-                compressed_context,
+            "original_tokens": original_tokens,
 
-            "kept":
-                kept,
+            "compressed_tokens": compressed_tokens,
 
-            "removed":
-                removed,
+            "tokens_saved": tokens_saved,
 
-            "coverage":
-                coverage,
+            "compression_ratio": compression_ratio,
 
-            "missing_concepts":
-                missing_concepts,
+            "total_sentences": len(
+                sentences
+            ),
 
-            "original_tokens":
-                original_tokens,
+            "kept_sentences": len(
+                selected
+            ),
 
-            "compressed_tokens":
-                compressed_tokens,
+            "removed_sentences": len(
+                removed
+            ),
 
-            "tokens_saved":
-                saved_tokens,
+            "coverage": final_coverage[
+                "coverage"
+            ],
 
-            "compression_ratio":
-                saved_ratio,
+            "coverage_guard_passed": (
+                final_coverage["passed"]
+            ),
 
-            "total_sentences":
-                len(sentences),
+            "coverage_guard_triggered": (
+                coverage_guard_triggered
+            ),
 
-            "kept_sentences":
-                len(kept),
+            "compressed_context": (
+                compressed_context
+            ),
 
-            "removed_sentences":
-                len(removed),
+            "kept": selected,
 
-            "coverage_guard_passed":
-                coverage_passed_final,
+            "removed": removed,
 
-            "coverage_guard_triggered":
-                guard_triggered
+            "missing_concepts": (
+                final_coverage[
+                    "missing_concepts"
+                ]
+            )
         }
