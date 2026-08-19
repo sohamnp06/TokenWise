@@ -69,9 +69,7 @@ class TokenDiet:
         )
 
         evidence_scores = [
-            evidence_bonus(
-                sentence
-            )
+            evidence_bonus(sentence)
             for sentence in sentences
         ]
 
@@ -92,8 +90,7 @@ class TokenDiet:
         candidates = (
             self.optimizer.calculate_token_values(
                 sentences,
-                final_scores,
-                evidence_scores
+                final_scores
             )
         )
 
@@ -137,10 +134,7 @@ class TokenDiet:
             threshold=self.coverage_threshold
         )
 
-        # -----------------------------------------------------
-        # Coverage already sufficient.
-        # -----------------------------------------------------
-
+        # Coverage already satisfies the threshold.
         if coverage_result["passed"]:
 
             return (
@@ -157,11 +151,8 @@ class TokenDiet:
 
         recovery_candidates = []
 
-        # -----------------------------------------------------
-        # Search removed sentences for semantic equivalents
-        # of missing concepts.
-        # -----------------------------------------------------
-
+        # Search removed sentences for semantic
+        # equivalents of missing concepts.
         for candidate in removed:
 
             sentence = candidate[
@@ -188,14 +179,9 @@ class TokenDiet:
                     )
                 )
 
-        # -----------------------------------------------------
-        # Prefer candidates that:
-        #
-        # 1. Cover more missing concepts
-        # 2. Have higher evidence
-        # 3. Have higher relevance
-        # -----------------------------------------------------
-
+        # Prefer candidates that cover the most
+        # missing concepts, followed by evidence,
+        # relevance, and final score.
         recovery_candidates.sort(
             key=lambda item: (
                 item[0],
@@ -214,10 +200,6 @@ class TokenDiet:
             ),
             reverse=True
         )
-
-        # -----------------------------------------------------
-        # Recover sentences until coverage passes.
-        # -----------------------------------------------------
 
         for (
             _,
@@ -247,7 +229,6 @@ class TokenDiet:
             )
 
             if coverage_result["passed"]:
-
                 break
 
         return (
@@ -309,7 +290,7 @@ class TokenDiet:
             }
 
         # -----------------------------------------------------
-        # Score candidates
+        # Build candidates
         # -----------------------------------------------------
 
         candidates = self._build_candidates(
@@ -318,7 +299,7 @@ class TokenDiet:
         )
 
         # -----------------------------------------------------
-        # Optimize token budget
+        # Initial optimization
         # -----------------------------------------------------
 
         selected = self.optimizer.select(
@@ -326,25 +307,31 @@ class TokenDiet:
             token_budget=token_budget
         )
 
-        selected_ids = {
-            id(candidate)
+        # IMPORTANT:
+        #
+        # Use sentence text rather than object identity.
+        # This prevents duplicated bookkeeping when candidates
+        # are copied by the optimizer.
+        selected_sentences = {
+            candidate["sentence"]
             for candidate in selected
         }
 
         removed = [
             candidate
             for candidate in candidates
-            if id(candidate)
-            not in selected_ids
+            if candidate["sentence"]
+            not in selected_sentences
         ]
 
         # -----------------------------------------------------
         # Coverage guard
         # -----------------------------------------------------
 
-        before_guard_count = len(
-            selected
-        )
+        before_guard_sentences = {
+            candidate["sentence"]
+            for candidate in selected
+        }
 
         (
             selected,
@@ -356,11 +343,38 @@ class TokenDiet:
             removed=removed
         )
 
+        after_guard_sentences = {
+            candidate["sentence"]
+            for candidate in selected
+        }
+
         coverage_guard_triggered = (
-            len(selected)
+            before_guard_sentences
             !=
-            before_guard_count
+            after_guard_sentences
         )
+
+        # -----------------------------------------------------
+        # Rebuild removed list from final selected set.
+        #
+        # This guarantees:
+        #
+        # total = kept + removed
+        #
+        # with no duplicates.
+        # -----------------------------------------------------
+
+        final_selected_sentences = {
+            candidate["sentence"]
+            for candidate in selected
+        }
+
+        removed = [
+            candidate
+            for candidate in candidates
+            if candidate["sentence"]
+            not in final_selected_sentences
+        ]
 
         # -----------------------------------------------------
         # Mark decisions
@@ -440,7 +454,7 @@ class TokenDiet:
             compression_ratio = 0.0
 
         # -----------------------------------------------------
-        # Final coverage
+        # Final coverage check
         # -----------------------------------------------------
 
         final_coverage = check_coverage(
@@ -448,6 +462,10 @@ class TokenDiet:
             context=compressed_context,
             threshold=self.coverage_threshold
         )
+
+        # -----------------------------------------------------
+        # Final result
+        # -----------------------------------------------------
 
         return {
             "original_tokens": original_tokens,
