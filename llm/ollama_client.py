@@ -1,13 +1,19 @@
 import time
+
 import requests
 
 
 class OllamaClient:
     """
-    Simple local Ollama LLM client.
+    Local Ollama LLM client.
 
-    Uses the Ollama HTTP API to generate answers
-    from a supplied context.
+    Sends a prompt to Ollama and returns:
+
+        - generated response
+        - latency
+        - prompt token count
+        - generated token count
+        - total token count
     """
 
     def __init__(
@@ -24,15 +30,33 @@ class OllamaClient:
         context: str
     ) -> dict:
         """
-        Generate an answer using the supplied context.
+        Generate an answer using only the supplied context.
 
-        Returns:
+        Returns
+        -------
+        dict
             response
             latency_ms
+            prompt_tokens
+            completion_tokens
+            total_tokens
         """
+
+        if not query or not query.strip():
+            raise ValueError(
+                "Query cannot be empty."
+            )
+
+        if not context or not context.strip():
+            raise ValueError(
+                "Context cannot be empty."
+            )
 
         prompt = f"""
 Answer the user's question using only the context below.
+
+If the answer is not explicitly supported by the context,
+say that the context does not provide enough information.
 
 Question:
 {query}
@@ -61,12 +85,41 @@ Answer:
 
         data = response.json()
 
+        prompt_tokens = data.get(
+            "prompt_eval_count",
+            0
+        )
+
+        completion_tokens = data.get(
+            "eval_count",
+            0
+        )
+
+        total_tokens = (
+            prompt_tokens
+            +
+            completion_tokens
+        )
+
         return {
             "response": data.get(
                 "response",
                 ""
             ).strip(),
+
             "latency_ms": (
                 end_time - start_time
-            ) * 1000
+            ) * 1000,
+
+            "prompt_tokens": (
+                prompt_tokens
+            ),
+
+            "completion_tokens": (
+                completion_tokens
+            ),
+
+            "total_tokens": (
+                total_tokens
+            )
         }
