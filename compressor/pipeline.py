@@ -39,28 +39,28 @@ class TokenDiet:
 
         Query + Retrieved Context
                     ↓
-             Sentence Splitting
+              Sentence Splitting
                     ↓
-             Relevance Scoring
+              Relevance Scoring
                     ↓
-              Evidence Bonus
+               Evidence Bonus
                     ↓
-            Redundancy Detection
+             Redundancy Detection
                     ↓
              Final Sentence Score
                     ↓
-              Token Value
+               Token Value
                     ↓
-          Budget-Constrained Selection
+           Budget-Constrained Selection
                     ↓
-              Coverage Guard
+               Coverage Guard
                     ↓
-             Compressed Context
+              Compressed Context
     """
 
     def __init__(
         self,
-        evidence_weight: float = 0.25,
+        evidence_weight: float = 0.45,
         redundancy_weight: float = 0.25,
         coverage_threshold: float = 0.80,
         relevance_model: str = (
@@ -72,23 +72,6 @@ class TokenDiet:
     ):
         """
         Initialize all TokenWise components.
-
-        Parameters
-        ----------
-        evidence_weight : float
-            Weight applied to evidence bonus.
-
-        redundancy_weight : float
-            Weight applied to redundancy penalty.
-
-        coverage_threshold : float
-            Minimum acceptable query coverage.
-
-        relevance_model : str
-            Cross-Encoder model used for relevance.
-
-        redundancy_model : str
-            Sentence Transformer model used for redundancy.
         """
 
         self.coverage_threshold = (
@@ -134,38 +117,6 @@ class TokenDiet:
     ) -> dict:
         """
         Compress retrieved context according to a token budget.
-
-        Parameters
-        ----------
-        query : str
-            User query.
-
-        context : str
-            Retrieved context from the RAG system.
-
-        token_budget : int
-            Maximum number of tokens allowed for the
-            compressed context.
-
-        Returns
-        -------
-        dict
-            Complete compression result containing:
-
-            - compressed_context
-            - kept
-            - removed
-            - coverage
-            - missing_concepts
-            - original_tokens
-            - compressed_tokens
-            - tokens_saved
-            - compression_ratio
-            - total_sentences
-            - kept_sentences
-            - removed_sentences
-            - coverage_guard_passed
-            - coverage_guard_triggered
         """
 
         # -----------------------------------------------------
@@ -197,19 +148,19 @@ class TokenDiet:
 
         if not sentences:
 
+            original_tokens = count_tokens(
+                context
+            )
+
             return {
                 "compressed_context": "",
                 "kept": [],
                 "removed": [],
                 "coverage": 0.0,
                 "missing_concepts": [],
-                "original_tokens": count_tokens(
-                    context
-                ),
+                "original_tokens": original_tokens,
                 "compressed_tokens": 0,
-                "tokens_saved": count_tokens(
-                    context
-                ),
+                "tokens_saved": original_tokens,
                 "compression_ratio": 100.0,
                 "total_sentences": 0,
                 "kept_sentences": 0,
@@ -264,15 +215,23 @@ class TokenDiet:
         # -----------------------------------------------------
         # 6. Token value calculation
         # -----------------------------------------------------
+        #
+        # IMPORTANT:
+        # Pass evidence_scores directly into the optimizer.
+        # This allows the selection stage to protect strong
+        # evidence sentences.
+        # -----------------------------------------------------
 
         candidates = (
             self.optimizer.calculate_token_values(
                 sentences=sentences,
-                scores=final_scores
+                scores=final_scores,
+                evidence_scores=evidence_scores
             )
         )
 
         # Add scoring information to every candidate.
+
         for index, candidate in enumerate(
             candidates
         ):
@@ -310,24 +269,22 @@ class TokenDiet:
         }
 
         # Mark selected sentences.
+
         for candidate in candidates:
 
             if candidate["index"] in selected_indices:
+
                 candidate["decision"] = "KEEP"
 
             else:
+
                 candidate["decision"] = "REMOVE"
 
         # -----------------------------------------------------
         # 8. Build initial compressed context
         # -----------------------------------------------------
 
-        # Keep the original document order rather than
-        # token-value ranking order.
-        #
-        # This is important because the LLM should receive
-        # coherent context instead of randomly reordered
-        # sentences.
+        # Keep original document order.
 
         selected_by_index = sorted(
             selected,
@@ -369,15 +326,14 @@ class TokenDiet:
             ]
 
             # Prioritize excluded sentences by final score.
+
             excluded.sort(
                 key=lambda item: item["score"],
                 reverse=True
             )
 
-            # Restore sentences one at a time until
-            # coverage reaches the required threshold.
-            #
-            # We also respect the token budget whenever possible.
+            # Restore sentences until coverage passes.
+
             for candidate in excluded:
 
                 candidate_cost = (

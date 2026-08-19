@@ -3,49 +3,42 @@ from evaluation.metrics import count_tokens
 
 class TokenOptimizer:
     """
-    Optimize retrieved sentences according to their
-    information value per token.
+    Optimize sentences according to information value per token.
 
-    TokenWise first calculates a final sentence score:
+    Final score:
 
         Score =
             Relevance
             + Evidence Weight * Evidence
             - Redundancy Weight * Redundancy
 
-    It then calculates:
+    Selection considers:
 
-        Token Value =
-            Score / Token Cost
+        - Relevance
+        - Evidence
+        - Redundancy
+        - Token efficiency
+        - Already selected content
 
-    Finally, it selects the highest-value sentences
-    while respecting a fixed token budget.
+    The optimizer protects useful evidence while aggressively
+    removing highly redundant sentences.
     """
 
     def __init__(
         self,
-        evidence_weight: float = 0.25,
-        redundancy_weight: float = 0.25
+        evidence_weight: float = 0.45,
+        redundancy_weight: float = 0.25,
+        evidence_priority: float = 0.15,
+        redundancy_threshold: float = 0.80
     ):
-        """
-        Initialize the optimizer.
+        self.evidence_weight = evidence_weight
+        self.redundancy_weight = redundancy_weight
+        self.evidence_priority = evidence_priority
+        self.redundancy_threshold = redundancy_threshold
 
-        Parameters
-        ----------
-        evidence_weight : float
-            Weight applied to the evidence bonus.
-
-        redundancy_weight : float
-            Weight applied to the redundancy penalty.
-        """
-
-        self.evidence_weight = (
-            evidence_weight
-        )
-
-        self.redundancy_weight = (
-            redundancy_weight
-        )
+    # =========================================================
+    # SCORE CALCULATION
+    # =========================================================
 
     def calculate_scores(
         self,
@@ -53,32 +46,6 @@ class TokenOptimizer:
         evidence_scores: list[float],
         redundancy_scores: list[float]
     ) -> list[float]:
-        """
-        Calculate the final score for every sentence.
-
-        Formula:
-
-            S(s) =
-                R(s)
-                + λE(s)
-                - μD(s)
-
-        Parameters
-        ----------
-        relevance_scores : list[float]
-            Cross-Encoder relevance scores.
-
-        evidence_scores : list[float]
-            Evidence bonuses.
-
-        redundancy_scores : list[float]
-            Redundancy penalties.
-
-        Returns
-        -------
-        list[float]
-            Final sentence scores.
-        """
 
         if not (
             len(relevance_scores)
@@ -106,20 +73,23 @@ class TokenOptimizer:
             score = (
                 relevance
                 +
-                (
-                    self.evidence_weight
-                    *
-                    evidence
-                )
+                self.evidence_weight * evidence
                 -
-                (
-                    self.redundancy_weight
-                    *
-                    redundancy
-                )
+                self.redundancy_weight * redundancy
             )
 
-            # Prevent negative sentence scores.
+            # Protect strong evidence.
+            if evidence >= 0.50:
+
+                evidence_floor = (
+                    evidence * 0.30
+                )
+
+                score = max(
+                    score,
+                    evidence_floor
+                )
+
             score = max(
                 0.0,
                 score
@@ -131,58 +101,50 @@ class TokenOptimizer:
 
         return final_scores
 
+    # =========================================================
+    # TOKEN VALUE
+    # =========================================================
+
     def calculate_token_values(
         self,
         sentences: list[str],
-        scores: list[float]
+        scores: list[float],
+        evidence_scores: list[float] | None = None
     ) -> list[dict]:
-        """
-        Calculate token cost and token value for each sentence.
-
-        Formula:
-
-            Token Value =
-                Sentence Score / Token Cost
-
-        Parameters
-        ----------
-        sentences : list[str]
-            Candidate sentences.
-
-        scores : list[float]
-            Final sentence scores.
-
-        Returns
-        -------
-        list[dict]
-            Candidate information including:
-
-            sentence
-            score
-            token_cost
-            token_value
-        """
 
         if len(sentences) != len(scores):
             raise ValueError(
                 "Sentences and scores must have the same length."
             )
 
-        candidates = []
+        if evidence_scores is None:
 
-        for sentence, score in zip(
-            sentences,
-            scores
-        ):
+            evidence_scores = [
+                0.0
+                for _ in sentences
+            ]
 
-            token_cost = count_tokens(
-                sentence
+        if len(evidence_scores) != len(sentences):
+            raise ValueError(
+                "Evidence scores must have the same length "
+                "as sentences."
             )
 
-            # Prevent division by zero.
+        candidates = []
+
+        for (
+            sentence,
+            score,
+            evidence
+        ) in zip(
+            sentences,
+            scores,
+            evidence_scores
+        ):
+
             token_cost = max(
                 1,
-                token_cost
+                count_tokens(sentence)
             )
 
             token_value = (
@@ -191,14 +153,21 @@ class TokenOptimizer:
                 token_cost
             )
 
-            candidates.append({
-                "sentence": sentence,
-                "score": score,
-                "token_cost": token_cost,
-                "token_value": token_value
-            })
+            candidates.append(
+                {
+                    "sentence": sentence,
+                    "score": score,
+                    "evidence": evidence,
+                    "token_cost": token_cost,
+                    "token_value": token_value
+                }
+            )
 
         return candidates
+
+    # =========================================================
+    # SELECTION
+    # =========================================================
 
     def select(
         self,
@@ -208,49 +177,107 @@ class TokenOptimizer:
         """
         Select high-value sentences under a token budget.
 
-        The current implementation uses a greedy
-        value-per-token strategy:
+        Selection strategy:
 
-            1. Sort candidates by token value.
-            2. Select the highest-value candidate.
-            3. Continue until the token budget is exhausted.
+        Phase 1:
+            Preserve important evidence.
 
-        Parameters
-        ----------
-        candidates : list[dict]
-            Candidate sentences produced by
-            calculate_token_values().
+        Phase 2:
+            Select high-value sentences by token efficiency.
 
-        token_budget : int
-            Maximum number of tokens allowed.
+        Redundancy guard:
+            Candidates with extremely high redundancy are skipped
+            when they do not provide sufficiently unique evidence.
 
-        Returns
-        -------
-        list[dict]
-            Selected candidates.
+        This prevents cases such as:
+
+            "Solar generation increased by 42%..."
+
+        and
+
+            "Solar energy generation experienced a 42% increase..."
+
+        from both consuming the context budget.
         """
 
         if token_budget <= 0:
             return []
 
-        # Sort by information value per token.
-        ranked_candidates = sorted(
-            candidates,
-            key=lambda item: item["token_value"],
-            reverse=True
-        )
+        remaining = list(candidates)
 
         selected = []
 
         total_tokens = 0
 
-        for candidate in ranked_candidates:
+        # -----------------------------------------------------
+        # Phase 1: Evidence-aware candidates
+        # -----------------------------------------------------
+
+        evidence_candidates = [
+            candidate
+            for candidate in remaining
+            if candidate.get(
+                "evidence",
+                0.0
+            ) >= 0.25
+        ]
+
+        evidence_candidates.sort(
+            key=lambda candidate: (
+                candidate.get(
+                    "evidence",
+                    0.0
+                )
+                *
+                (
+                    1.0
+                    -
+                    candidate.get(
+                        "redundancy",
+                        0.0
+                    )
+                )
+            ),
+            reverse=True
+        )
+
+        for candidate in evidence_candidates:
 
             token_cost = candidate[
                 "token_cost"
             ]
 
-            # Do not exceed the token budget.
+            redundancy = candidate.get(
+                "redundancy",
+                0.0
+            )
+
+            evidence = candidate.get(
+                "evidence",
+                0.0
+            )
+
+            # -------------------------------------------------
+            # Skip extremely redundant evidence.
+            #
+            # Exception:
+            # Very strong evidence can still survive.
+            # -------------------------------------------------
+
+            if (
+                redundancy
+                >=
+                self.redundancy_threshold
+                and
+                evidence
+                <
+                0.65
+            ):
+                remaining.remove(
+                    candidate
+                )
+                continue
+
             if (
                 total_tokens
                 +
@@ -261,6 +288,141 @@ class TokenOptimizer:
 
                 selected.append(
                     candidate
+                )
+
+                total_tokens += (
+                    token_cost
+                )
+
+                remaining.remove(
+                    candidate
+                )
+
+        # -----------------------------------------------------
+        # Phase 2: General candidate selection
+        # -----------------------------------------------------
+
+        ranked_candidates = []
+
+        for candidate in remaining:
+
+            token_value = candidate[
+                "token_value"
+            ]
+
+            evidence = candidate.get(
+                "evidence",
+                0.0
+            )
+
+            redundancy = candidate.get(
+                "redundancy",
+                0.0
+            )
+
+            # -------------------------------------------------
+            # Evidence multiplier
+            # -------------------------------------------------
+
+            evidence_multiplier = (
+                1.0
+                +
+                (
+                    self.evidence_priority
+                    *
+                    evidence
+                )
+            )
+
+            # -------------------------------------------------
+            # Redundancy multiplier
+            # -------------------------------------------------
+
+            redundancy_multiplier = (
+                1.0
+                -
+                (
+                    self.redundancy_weight
+                    *
+                    redundancy
+                )
+            )
+
+            selection_value = (
+                token_value
+                *
+                evidence_multiplier
+                *
+                redundancy_multiplier
+            )
+
+            ranked_candidates.append(
+                (
+                    selection_value,
+                    candidate
+                )
+            )
+
+        ranked_candidates.sort(
+            key=lambda item: item[0],
+            reverse=True
+        )
+
+        # -----------------------------------------------------
+        # Select remaining candidates
+        # -----------------------------------------------------
+
+        for (
+            selection_value,
+            candidate
+        ) in ranked_candidates:
+
+            token_cost = candidate[
+                "token_cost"
+            ]
+
+            redundancy = candidate.get(
+                "redundancy",
+                0.0
+            )
+
+            evidence = candidate.get(
+                "evidence",
+                0.0
+            )
+
+            # Skip extremely redundant candidates unless
+            # they contain very strong evidence.
+
+            if (
+                redundancy
+                >=
+                self.redundancy_threshold
+                and
+                evidence
+                <
+                0.65
+            ):
+                continue
+
+            if (
+                total_tokens
+                +
+                token_cost
+                <=
+                token_budget
+            ):
+
+                selected_candidate = dict(
+                    candidate
+                )
+
+                selected_candidate[
+                    "selection_value"
+                ] = selection_value
+
+                selected.append(
+                    selected_candidate
                 )
 
                 total_tokens += (

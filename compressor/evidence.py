@@ -7,8 +7,6 @@ import spacy
 nlp = spacy.load("en_core_web_sm")
 
 
-# Technical terms that can indicate useful information
-# in technical / RAG contexts.
 TECHNICAL_TERMS = {
     "algorithm",
     "accuracy",
@@ -34,6 +32,29 @@ TECHNICAL_TERMS = {
 }
 
 
+# Phrases that indicate a causal or explanatory claim.
+CAUSAL_PHRASES = {
+    "caused",
+    "cause",
+    "causes",
+    "contributed",
+    "contributed to",
+    "contributed significantly",
+    "led to",
+    "lead to",
+    "resulted in",
+    "result in",
+    "drove",
+    "driven by",
+    "due to",
+    "because of",
+    "as a result",
+    "responsible for",
+    "major contributor",
+    "major contributors",
+}
+
+
 def evidence_bonus(sentence: str) -> float:
     """
     Calculate an evidence bonus for a sentence.
@@ -46,16 +67,7 @@ def evidence_bonus(sentence: str) -> float:
     - Named entities
     - Citations
     - Technical terms
-
-    Parameters
-    ----------
-    sentence : str
-        Sentence to evaluate.
-
-    Returns
-    -------
-    float
-        Evidence score between 0 and 1.
+    - Causal / explanatory language
     """
 
     if not sentence or not sentence.strip():
@@ -67,11 +79,6 @@ def evidence_bonus(sentence: str) -> float:
     # 1. Numeric evidence
     # ---------------------------------------------------------
 
-    # Detect numbers such as:
-    # 42
-    # 42.5
-    # 1,000
-    # 1,000.50
     if re.search(
         r"\b\d+(?:,\d{3})*(?:\.\d+)?\b",
         sentence
@@ -82,9 +89,6 @@ def evidence_bonus(sentence: str) -> float:
     # 2. Percentage evidence
     # ---------------------------------------------------------
 
-    # Detect:
-    # 42%
-    # 42.5%
     if re.search(
         r"\b\d+(?:\.\d+)?\s*%",
         sentence
@@ -95,17 +99,12 @@ def evidence_bonus(sentence: str) -> float:
     # 3. Date / year evidence
     # ---------------------------------------------------------
 
-    # Detect common four-digit years.
     if re.search(
         r"\b(?:19|20)\d{2}\b",
         sentence
     ):
         score += 0.10
 
-    # Detect common date formats such as:
-    # 18/08/2026
-    # 18-08-2026
-    # 2026-08-18
     if re.search(
         r"\b\d{1,4}[-/]\d{1,2}[-/]\d{1,4}\b",
         sentence
@@ -116,18 +115,12 @@ def evidence_bonus(sentence: str) -> float:
     # 4. Citation evidence
     # ---------------------------------------------------------
 
-    # Detect simple citation formats such as:
-    # [1]
-    # [23]
-    # [4, 5]
     if re.search(
         r"\[\s*\d+(?:\s*,\s*\d+)*\s*\]",
         sentence
     ):
         score += 0.15
 
-    # Detect author-year style citations:
-    # (Smith, 2024)
     if re.search(
         r"\([A-Z][A-Za-z-]+,\s*(?:19|20)\d{2}\)",
         sentence
@@ -156,16 +149,34 @@ def evidence_bonus(sentence: str) -> float:
         if term in sentence_lower:
             technical_matches += 1
 
-    # Give a small bonus for technical terminology.
-    # Cap this contribution so a sentence isn't rewarded
-    # excessively simply because it contains many terms.
     score += min(
         technical_matches * 0.05,
         0.20
     )
 
     # ---------------------------------------------------------
-    # Final normalization / cap
+    # 7. Causal / explanatory evidence
     # ---------------------------------------------------------
 
-    return min(score, 1.0)
+    causal_matches = 0
+
+    for phrase in CAUSAL_PHRASES:
+
+        if phrase in sentence_lower:
+            causal_matches += 1
+
+    # Causal language is valuable because it explains
+    # WHY something happened, not just WHAT happened.
+    score += min(
+        causal_matches * 0.15,
+        0.30
+    )
+
+    # ---------------------------------------------------------
+    # Final normalization
+    # ---------------------------------------------------------
+
+    return min(
+        score,
+        1.0
+    )

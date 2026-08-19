@@ -1,6 +1,11 @@
-from compressor.optimizer import (
-    TokenOptimizer
-)
+from compressor.optimizer import TokenOptimizer
+from evaluation.metrics import count_tokens
+
+
+print("\n")
+print("=" * 70)
+print("                    TOKEN OPTIMIZER TEST")
+print("=" * 70)
 
 
 sentences = [
@@ -8,50 +13,42 @@ sentences = [
     "The weather was generally stable during the period.",
     "Government incentives contributed significantly to this growth.",
     "Solar energy generation experienced a 42% increase from 2020 to 2025.",
-    "Several companies announced new projects during this period.",
+    "Several companies announced new projects during this period."
 ]
 
 
-# These are temporary test values.
-# Later they will come directly from our
-# RelevanceScorer, Evidence system, and
-# RedundancyDetector.
 relevance_scores = [
-    0.95,
-    0.10,
-    0.70,
-    0.90,
-    0.30,
+    1.00,
+    0.00,
+    0.17,
+    0.81,
+    0.29
 ]
+
 
 evidence_scores = [
     0.55,
     0.00,
     0.00,
     0.55,
-    0.15,
+    0.00
 ]
+
 
 redundancy_scores = [
     0.00,
-    0.10,
-    0.30,
-    0.90,
-    0.20,
+    0.13,
+    0.35,
+    0.85,
+    0.59
 ]
 
 
-print("\n===== TOKEN OPTIMIZER TEST =====\n")
-
-
-optimizer = TokenOptimizer(
-    evidence_weight=0.25,
-    redundancy_weight=0.25
-)
+optimizer = TokenOptimizer()
 
 
 # ---------------------------------------------------------
-# 1. Calculate final sentence scores
+# Calculate final scores
 # ---------------------------------------------------------
 
 final_scores = optimizer.calculate_scores(
@@ -61,11 +58,14 @@ final_scores = optimizer.calculate_scores(
 )
 
 
-print("FINAL SENTENCE SCORES")
+print("\nFINAL SENTENCE SCORES")
 print("---------------------")
 
 
-for sentence, score in zip(
+for (
+    sentence,
+    score
+) in zip(
     sentences,
     final_scores
 ):
@@ -82,12 +82,13 @@ for sentence, score in zip(
 
 
 # ---------------------------------------------------------
-# 2. Calculate token values
+# Calculate token values
 # ---------------------------------------------------------
 
 candidates = optimizer.calculate_token_values(
     sentences=sentences,
-    scores=final_scores
+    scores=final_scores,
+    evidence_scores=evidence_scores
 )
 
 
@@ -100,6 +101,11 @@ for candidate in candidates:
     print(
         f"Score:       "
         f"{candidate['score']:.4f}"
+    )
+
+    print(
+        f"Evidence:    "
+        f"{candidate['evidence']:.4f}"
     )
 
     print(
@@ -121,11 +127,10 @@ for candidate in candidates:
 
 
 # ---------------------------------------------------------
-# 3. Budget-constrained selection
+# Selection
 # ---------------------------------------------------------
 
 token_budget = 40
-
 
 selected = optimizer.select(
     candidates=candidates,
@@ -138,18 +143,19 @@ print(
     f"(Budget = {token_budget} tokens)"
 )
 
-print(
-    "------------------------------------"
-)
+print("------------------------------------")
 
 
 total_tokens = 0
-
 
 for index, candidate in enumerate(
     selected,
     start=1
 ):
+
+    total_tokens += candidate[
+        "token_cost"
+    ]
 
     print(
         f"{index}. "
@@ -162,15 +168,21 @@ for index, candidate in enumerate(
     )
 
     print(
+        f"   Evidence: "
+        f"{candidate['evidence']:.4f}"
+    )
+
+    print(
         f"   Value: "
         f"{candidate['token_value']:.6f}"
     )
 
-    print()
-
-    total_tokens += (
-        candidate["token_cost"]
+    print(
+        f"   Selection Value: "
+        f"{candidate['selection_value']:.6f}"
     )
+
+    print()
 
 
 print(
@@ -184,4 +196,59 @@ print(
 )
 
 
-print("\n================================\n")
+# ---------------------------------------------------------
+# Evidence preservation check
+# ---------------------------------------------------------
+
+evidence_sentence = (
+    "Solar production increased by 42% "
+    "between 2020 and 2025."
+)
+
+government_sentence = (
+    "Government incentives contributed "
+    "significantly to this growth."
+)
+
+
+selected_text = [
+    candidate["sentence"]
+    for candidate in selected
+]
+
+
+print("\nEVIDENCE PRESERVATION CHECK")
+print("---------------------------")
+
+
+if evidence_sentence in selected_text:
+
+    print(
+        "PASS: Numeric evidence sentence preserved."
+    )
+
+else:
+
+    print(
+        "WARNING: Numeric evidence sentence removed."
+    )
+
+
+if government_sentence in selected_text:
+
+    print(
+        "PASS: Government-incentive sentence preserved."
+    )
+
+else:
+
+    print(
+        "INFO: Government-incentive sentence not selected."
+    )
+
+
+print("\n")
+print("=" * 70)
+print("                     TEST COMPLETE")
+print("=" * 70)
+print()
