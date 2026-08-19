@@ -124,10 +124,14 @@ class RAGPipeline:
         )
 
         if not documents:
-
-            raise RuntimeError(
-                "No documents were loaded."
-            )
+            self.retriever.clear()
+            self.chunks = []
+            self.is_indexed = False
+            return {
+                "documents": 0,
+                "chunks": 0,
+                "indexed": 0
+            }
 
         print(
             f"\nDocuments loaded: "

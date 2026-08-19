@@ -25,7 +25,10 @@ class DocumentIngestor:
     """
 
     SUPPORTED_EXTENSIONS = {
-        ".txt"
+        ".txt",
+        ".pdf",
+        ".docx",
+        ".md"
     }
 
     def __init__(
@@ -95,12 +98,54 @@ class DocumentIngestor:
             files
         )
 
+    def _read_pdf(self, path: Path) -> str:
+        """Read text from a PDF file using pypdf or PyPDF2."""
+        text_parts = []
+        try:
+            import pypdf
+            reader = pypdf.PdfReader(str(path), strict=False)
+            for idx, page in enumerate(reader.pages):
+                try:
+                    extracted = page.extract_text()
+                    if extracted and extracted.strip():
+                        text_parts.append(extracted.strip())
+                except Exception:
+                    continue
+        except Exception:
+            try:
+                import PyPDF2
+                reader = PyPDF2.PdfReader(str(path), strict=False)
+                for page in reader.pages:
+                    extracted = page.extract_text()
+                    if extracted and extracted.strip():
+                        text_parts.append(extracted.strip())
+            except Exception as exc:
+                raise ValueError(f"Could not parse PDF file '{path.name}': {exc}") from exc
+
+        full_text = "\n\n".join(text_parts).strip()
+        if not full_text:
+            raise ValueError(
+                f"PDF file '{path.name}' contains no extractable text. "
+                "If it is a scanned document, please convert or provide a text-searchable PDF."
+            )
+
+        return full_text
+
+    def _read_docx(self, path: Path) -> str:
+        """Read text from a DOCX file using python-docx."""
+        try:
+            import docx
+            doc = docx.Document(str(path))
+            return "\n".join([p.text for p.text in doc.paragraphs if p.text.strip()])
+        except Exception as exc:
+            raise ValueError(f"Could not read DOCX file {path}: {exc}") from exc
+
     def read_file(
         self,
         path: Path
     ) -> str:
         """
-        Read a text file using UTF-8.
+        Read a document file (.txt, .pdf, .docx, .md).
 
         Parameters
         ----------
@@ -113,18 +158,22 @@ class DocumentIngestor:
             File contents.
         """
 
-        try:
+        ext = path.suffix.lower()
 
+        if ext == ".pdf":
+            return self._read_pdf(path)
+
+        if ext == ".docx":
+            return self._read_docx(path)
+
+        try:
             return path.read_text(
                 encoding="utf-8"
             )
-
-        except UnicodeDecodeError as exc:
-
-            raise ValueError(
-                f"Could not decode file as UTF-8: "
-                f"{path}"
-            ) from exc
+        except UnicodeDecodeError:
+            return path.read_text(
+                encoding="latin-1"
+            )
 
     def load_documents(self) -> list[dict]:
         """

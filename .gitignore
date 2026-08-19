@@ -189,7 +189,9 @@ local_data/
 # Uploaded documents
 uploads/
 uploaded_files/
-documents/
+documents/*
+!documents/renewable_energy.txt
+!documents/aiayn.pdf
 docs_data/
 
 
@@ -487,10 +489,8 @@ playwright/.cache/
 # REPORTS / DOCUMENTATION GENERATED FILES
 # ============================================================
 
-*.pdf
-
-# If you want to keep project documentation PDFs,
-# remove the *.pdf rule above.
+# Note: PDF files in documents/ are explicitly allowed below.
+# Individual large binary PDFs elsewhere should not be committed.
 
 
 # ============================================================

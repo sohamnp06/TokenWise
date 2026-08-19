@@ -285,9 +285,13 @@ class TokenOptimizer:
                 <=
                 token_budget
             ):
+                selected_candidate = dict(candidate)
+                ev_mult = 1.0 + (self.evidence_priority * evidence)
+                red_mult = 1.0 - (self.redundancy_weight * redundancy)
+                selected_candidate["selection_value"] = candidate.get("token_value", 0.0) * ev_mult * red_mult
 
                 selected.append(
-                    candidate
+                    selected_candidate
                 )
 
                 total_tokens += (

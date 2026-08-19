@@ -1,0 +1,24 @@
+services:
+  - type: web
+    name: tokenwise-api
+    runtime: python
+    region: oregon
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn api.app:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /api/health
+    envVars:
+      - key: OPENROUTER_API_KEY
+        sync: false
+      - key: OPENROUTER_MODEL
+        value: nvidia/nemotron-3-super-120b-a12b:free
+      - key: CORS_ORIGINS
+        value: https://tokenwise.vercel.app
+      - key: DOCUMENTS_DIR
+        value: documents
+      - key: DEFAULT_TOP_K
+        value: "4"
+      - key: DEFAULT_TOKEN_BUDGET
+        value: "80"
+      - key: DEFAULT_COVERAGE_THRESHOLD
+        value: "0.80"
