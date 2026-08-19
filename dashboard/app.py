@@ -134,6 +134,77 @@ run_button = st.button(
 
 
 # =========================================================
+# HELPER FUNCTIONS
+# =========================================================
+
+def average(values):
+    """Return the average of a list safely."""
+
+    if not values:
+        return 0.0
+
+    return sum(values) / len(values)
+
+
+def run_llm_benchmark(
+    llm,
+    query,
+    original_context,
+    compressed_context,
+    runs
+):
+    """
+    Run multiple LLM benchmarks for both contexts.
+
+    Returns:
+        original_results
+        compressed_results
+    """
+
+    original_results = []
+    compressed_results = []
+
+    # -----------------------------------------------------
+    # Original context
+    # -----------------------------------------------------
+
+    for run_number in range(runs):
+
+        result = llm.generate(
+            query=query,
+            context=original_context
+        )
+
+        result["run"] = run_number + 1
+
+        original_results.append(
+            result
+        )
+
+    # -----------------------------------------------------
+    # Compressed context
+    # -----------------------------------------------------
+
+    for run_number in range(runs):
+
+        result = llm.generate(
+            query=query,
+            context=compressed_context
+        )
+
+        result["run"] = run_number + 1
+
+        compressed_results.append(
+            result
+        )
+
+    return (
+        original_results,
+        compressed_results
+    )
+
+
+# =========================================================
 # MAIN PIPELINE
 # =========================================================
 
@@ -167,7 +238,7 @@ if run_button:
         pipeline.build_index()
 
     # =====================================================
-    # RUN RETRIEVAL + COMPRESSION
+    # RETRIEVAL + COMPRESSION
     # =====================================================
 
     with st.spinner(
@@ -215,6 +286,21 @@ if run_button:
     coverage = result.get(
         "coverage",
         0.0
+    )
+
+    coverage_passed = result.get(
+        "coverage_guard_passed",
+        False
+    )
+
+    coverage_triggered = result.get(
+        "coverage_guard_triggered",
+        False
+    )
+
+    missing_concepts = result.get(
+        "missing_concepts",
+        []
     )
 
     # =====================================================
@@ -293,11 +379,6 @@ if run_button:
         "### 🛡️ Coverage Guard"
     )
 
-    coverage_passed = result.get(
-        "coverage_guard_passed",
-        False
-    )
-
     if coverage_passed:
 
         st.success(
@@ -310,19 +391,11 @@ if run_button:
             "FAIL — important query concepts may be missing"
         )
 
-    if result.get(
-        "coverage_guard_triggered",
-        False
-    ):
+    if coverage_triggered:
 
         st.warning(
             "Coverage guard recovered additional information."
         )
-
-    missing_concepts = result.get(
-        "missing_concepts",
-        []
-    )
 
     if missing_concepts:
 
@@ -392,8 +465,11 @@ if run_button:
                 document = chunk.get(
                     "document",
                     chunk.get(
-                        "filename",
-                        ""
+                        "document_name",
+                        chunk.get(
+                            "filename",
+                            ""
+                        )
                     )
                 )
 
@@ -625,426 +701,6 @@ if run_button:
                 )
 
     # =====================================================
-    # LLM BENCHMARK
-    # =====================================================
-
-    if run_llm:
-
-        st.markdown(
-            "## ⚡ LLM Latency Benchmark"
-        )
-
-        st.caption(
-            f"Benchmarking Llama 3.2 over "
-            f"**{benchmark_runs} runs** per context."
-        )
-
-        llm = OllamaClient(
-            model="llama3.2:latest"
-        )
-
-        # -------------------------------------------------
-        # WARM-UP
-        # -------------------------------------------------
-
-        with st.spinner(
-            "Warming up Llama 3.2..."
-        ):
-
-            warmup = llm.generate(
-                query=query,
-                context=compressed_context
-            )
-
-        st.caption(
-            f"Warm-up: "
-            f"{warmup['latency_ms']:.2f} ms"
-        )
-
-        # -------------------------------------------------
-        # ORIGINAL BENCHMARK
-        # -------------------------------------------------
-
-        original_latencies = []
-        original_results = []
-
-        with st.spinner(
-            "Benchmarking original context..."
-        ):
-
-            for _ in range(
-                benchmark_runs
-            ):
-
-                response = llm.generate(
-                    query=query,
-                    context=original_context
-                )
-
-                original_latencies.append(
-                    response["latency_ms"]
-                )
-
-                original_results.append(
-                    response
-                )
-
-        # -------------------------------------------------
-        # COMPRESSED BENCHMARK
-        # -------------------------------------------------
-
-        compressed_latencies = []
-        compressed_results = []
-
-        with st.spinner(
-            "Benchmarking compressed context..."
-        ):
-
-            for _ in range(
-                benchmark_runs
-            ):
-
-                response = llm.generate(
-                    query=query,
-                    context=compressed_context
-                )
-
-                compressed_latencies.append(
-                    response["latency_ms"]
-                )
-
-                compressed_results.append(
-                    response
-                )
-
-        # -------------------------------------------------
-        # AVERAGES
-        # -------------------------------------------------
-
-        original_average = (
-            sum(original_latencies)
-            /
-            len(original_latencies)
-        )
-
-        compressed_average = (
-            sum(compressed_latencies)
-            /
-            len(compressed_latencies)
-        )
-
-        original_min = min(
-            original_latencies
-        )
-
-        original_max = max(
-            original_latencies
-        )
-
-        compressed_min = min(
-            compressed_latencies
-        )
-
-        compressed_max = max(
-            compressed_latencies
-        )
-
-        latency_saved = (
-            original_average
-            -
-            compressed_average
-        )
-
-        if original_average > 0:
-
-            latency_reduction = (
-                latency_saved
-                /
-                original_average
-            ) * 100
-
-        else:
-
-            latency_reduction = 0.0
-
-        # -------------------------------------------------
-        # LATENCY METRICS
-        # -------------------------------------------------
-
-        st.markdown(
-            "### Average Latency"
-        )
-
-        latency_col1, latency_col2, latency_col3 = (
-            st.columns(3)
-        )
-
-        with latency_col1:
-
-            st.metric(
-                "Original Average",
-                f"{original_average:.0f} ms"
-            )
-
-        with latency_col2:
-
-            st.metric(
-                "Compressed Average",
-                f"{compressed_average:.0f} ms"
-            )
-
-        with latency_col3:
-
-            st.metric(
-                "Latency Reduction",
-                f"{latency_reduction:.1f}%",
-                delta=f"{latency_saved:.0f} ms"
-            )
-
-        # -------------------------------------------------
-        # MIN / MAX
-        # -------------------------------------------------
-
-        st.markdown(
-            "### Latency Range"
-        )
-
-        range_col1, range_col2 = (
-            st.columns(2)
-        )
-
-        with range_col1:
-
-            st.write(
-                f"Original: "
-                f"**{original_min:.0f} ms** "
-                f"– "
-                f"**{original_max:.0f} ms**"
-            )
-
-        with range_col2:
-
-            st.write(
-                f"Compressed: "
-                f"**{compressed_min:.0f} ms** "
-                f"– "
-                f"**{compressed_max:.0f} ms**"
-            )
-
-        # -------------------------------------------------
-        # CLEAN BAR CHART
-        # -------------------------------------------------
-
-        latency_df = pd.DataFrame(
-            {
-                "Context": [
-                    "Original",
-                    "Compressed"
-                ],
-                "Average Latency (ms)": [
-                    original_average,
-                    compressed_average
-                ]
-            }
-        ).set_index(
-            "Context"
-        )
-
-        st.bar_chart(
-            latency_df,
-            y="Average Latency (ms)"
-        )
-
-        # -------------------------------------------------
-        # INDIVIDUAL RUNS
-        # -------------------------------------------------
-
-        with st.expander(
-            "View individual benchmark runs"
-        ):
-
-            benchmark_df = pd.DataFrame(
-                {
-                    "Run": list(
-                        range(
-                            1,
-                            benchmark_runs + 1
-                        )
-                    ),
-                    "Original (ms)": (
-                        original_latencies
-                    ),
-                    "Compressed (ms)": (
-                        compressed_latencies
-                    )
-                }
-            )
-
-            st.dataframe(
-                benchmark_df,
-                use_container_width=True,
-                hide_index=True
-            )
-
-        # =================================================
-        # TOKEN USAGE
-        # =================================================
-
-        st.markdown(
-            "### 🪙 LLM Token Usage"
-        )
-
-        original_response = (
-            original_results[-1]
-        )
-
-        compressed_response = (
-            compressed_results[-1]
-        )
-
-        original_prompt_tokens = (
-            original_response.get(
-                "prompt_tokens",
-                0
-            )
-        )
-
-        compressed_prompt_tokens = (
-            compressed_response.get(
-                "prompt_tokens",
-                0
-            )
-        )
-
-        original_completion_tokens = (
-            original_response.get(
-                "completion_tokens",
-                0
-            )
-        )
-
-        compressed_completion_tokens = (
-            compressed_response.get(
-                "completion_tokens",
-                0
-            )
-        )
-
-        original_total_tokens = (
-            original_response.get(
-                "total_tokens",
-                original_prompt_tokens
-                +
-                original_completion_tokens
-            )
-        )
-
-        compressed_total_tokens = (
-            compressed_response.get(
-                "total_tokens",
-                compressed_prompt_tokens
-                +
-                compressed_completion_tokens
-            )
-        )
-
-        prompt_tokens_saved = (
-            original_prompt_tokens
-            -
-            compressed_prompt_tokens
-        )
-
-        total_tokens_saved = (
-            original_total_tokens
-            -
-            compressed_total_tokens
-        )
-
-        token_col1, token_col2, token_col3 = (
-            st.columns(3)
-        )
-
-        with token_col1:
-
-            st.metric(
-                "Original Prompt",
-                original_prompt_tokens
-            )
-
-        with token_col2:
-
-            st.metric(
-                "Compressed Prompt",
-                compressed_prompt_tokens
-            )
-
-        with token_col3:
-
-            st.metric(
-                "Prompt Tokens Saved",
-                prompt_tokens_saved
-            )
-
-        st.write(
-            f"Original total LLM tokens: "
-            f"**{original_total_tokens}**"
-        )
-
-        st.write(
-            f"Compressed total LLM tokens: "
-            f"**{compressed_total_tokens}**"
-        )
-
-        st.write(
-            f"Total LLM tokens saved: "
-            f"**{total_tokens_saved}**"
-        )
-
-        # =================================================
-        # ANSWERS
-        # =================================================
-
-        st.markdown(
-            "## 🤖 LLM Answers"
-        )
-
-        answer_col1, answer_col2 = (
-            st.columns(2)
-        )
-
-        with answer_col1:
-
-            st.markdown(
-                "### Original Context"
-            )
-
-            st.info(
-                original_response.get(
-                    "response",
-                    ""
-                )
-            )
-
-        with answer_col2:
-
-            st.markdown(
-                "### TokenWise Context"
-            )
-
-            st.success(
-                compressed_response.get(
-                    "response",
-                    ""
-                )
-            )
-
-    else:
-
-        st.info(
-            "LLM benchmark disabled."
-        )
-
-    # =====================================================
     # PIPELINE PERFORMANCE
     # =====================================================
 
@@ -1061,6 +717,634 @@ if run_button:
         "TokenWise preprocessing only. "
         "LLM latency is benchmarked separately."
     )
+
+    # =====================================================
+    # LLM BENCHMARK
+    # =====================================================
+
+    if run_llm:
+
+        st.divider()
+
+        st.markdown(
+            "## ⚡ LLM Latency Benchmark"
+        )
+
+        st.write(
+            f"Benchmarking Llama 3.2 over "
+            f"**{benchmark_runs} runs** per context."
+        )
+
+        llm = OllamaClient(
+            model="llama3.2:latest"
+        )
+
+        # -------------------------------------------------
+        # Warm-up
+        # -------------------------------------------------
+
+        with st.spinner(
+            "Warming up Llama 3.2..."
+        ):
+
+            warmup = llm.generate(
+                query=query,
+                context=compressed_context
+            )
+
+        warmup_latency = warmup.get(
+            "latency_ms",
+            0.0
+        )
+
+        st.caption(
+            f"Warm-up: {warmup_latency:.2f} ms"
+        )
+
+        # -------------------------------------------------
+        # Benchmark
+        # -------------------------------------------------
+
+        with st.spinner(
+            f"Running {benchmark_runs} benchmark runs..."
+        ):
+
+            (
+                original_results,
+                compressed_results
+            ) = run_llm_benchmark(
+                llm=llm,
+                query=query,
+                original_context=original_context,
+                compressed_context=compressed_context,
+                runs=benchmark_runs
+            )
+
+        # -------------------------------------------------
+        # Extract latency
+        # -------------------------------------------------
+
+        original_latencies = [
+            item["latency_ms"]
+            for item in original_results
+        ]
+
+        compressed_latencies = [
+            item["latency_ms"]
+            for item in compressed_results
+        ]
+
+        original_avg_latency = average(
+            original_latencies
+        )
+
+        compressed_avg_latency = average(
+            compressed_latencies
+        )
+
+        latency_saved = (
+            original_avg_latency
+            -
+            compressed_avg_latency
+        )
+
+        if original_avg_latency > 0:
+
+            latency_reduction = (
+                latency_saved
+                /
+                original_avg_latency
+            ) * 100
+
+        else:
+
+            latency_reduction = 0.0
+
+        # -------------------------------------------------
+        # Token metrics
+        # -------------------------------------------------
+
+        original_prompt_tokens = [
+            item.get(
+                "prompt_tokens",
+                0
+            )
+            for item in original_results
+        ]
+
+        compressed_prompt_tokens = [
+            item.get(
+                "prompt_tokens",
+                0
+            )
+            for item in compressed_results
+        ]
+
+        original_completion_tokens = [
+            item.get(
+                "completion_tokens",
+                0
+            )
+            for item in original_results
+        ]
+
+        compressed_completion_tokens = [
+            item.get(
+                "completion_tokens",
+                0
+            )
+            for item in compressed_results
+        ]
+
+        original_total_tokens = [
+            item.get(
+                "total_tokens",
+                0
+            )
+            for item in original_results
+        ]
+
+        compressed_total_tokens = [
+            item.get(
+                "total_tokens",
+                0
+            )
+            for item in compressed_results
+        ]
+
+        original_avg_prompt = average(
+            original_prompt_tokens
+        )
+
+        compressed_avg_prompt = average(
+            compressed_prompt_tokens
+        )
+
+        original_avg_completion = average(
+            original_completion_tokens
+        )
+
+        compressed_avg_completion = average(
+            compressed_completion_tokens
+        )
+
+        original_avg_total = average(
+            original_total_tokens
+        )
+
+        compressed_avg_total = average(
+            compressed_total_tokens
+        )
+
+        prompt_tokens_saved = (
+            original_avg_prompt
+            -
+            compressed_avg_prompt
+        )
+
+        prompt_reduction = (
+            (
+                prompt_tokens_saved
+                /
+                original_avg_prompt
+            ) * 100
+            if original_avg_prompt > 0
+            else 0.0
+        )
+
+        total_tokens_saved = (
+            original_avg_total
+            -
+            compressed_avg_total
+        )
+
+        total_reduction = (
+            (
+                total_tokens_saved
+                /
+                original_avg_total
+            ) * 100
+            if original_avg_total > 0
+            else 0.0
+        )
+
+        # -------------------------------------------------
+        # Internal Ollama timing
+        # -------------------------------------------------
+
+        original_prompt_eval = [
+            item.get(
+                "prompt_eval_duration_ms",
+                0.0
+            )
+            for item in original_results
+        ]
+
+        compressed_prompt_eval = [
+            item.get(
+                "prompt_eval_duration_ms",
+                0.0
+            )
+            for item in compressed_results
+        ]
+
+        original_generation = [
+            item.get(
+                "generation_duration_ms",
+                0.0
+            )
+            for item in original_results
+        ]
+
+        compressed_generation = [
+            item.get(
+                "generation_duration_ms",
+                0.0
+            )
+            for item in compressed_results
+        ]
+
+        original_prompt_eval_avg = average(
+            original_prompt_eval
+        )
+
+        compressed_prompt_eval_avg = average(
+            compressed_prompt_eval
+        )
+
+        original_generation_avg = average(
+            original_generation
+        )
+
+        compressed_generation_avg = average(
+            compressed_generation
+        )
+
+        prompt_eval_saved = (
+            original_prompt_eval_avg
+            -
+            compressed_prompt_eval_avg
+        )
+
+        if original_prompt_eval_avg > 0:
+
+            prompt_eval_reduction = (
+                prompt_eval_saved
+                /
+                original_prompt_eval_avg
+            ) * 100
+
+        else:
+
+            prompt_eval_reduction = 0.0
+
+        # -------------------------------------------------
+        # Average latency
+        # -------------------------------------------------
+
+        st.markdown(
+            "### Average Latency"
+        )
+
+        latency_col1, latency_col2, latency_col3 = (
+            st.columns(3)
+        )
+
+        with latency_col1:
+
+            st.metric(
+                "Original Average",
+                f"{original_avg_latency:.0f} ms"
+            )
+
+        with latency_col2:
+
+            st.metric(
+                "Compressed Average",
+                f"{compressed_avg_latency:.0f} ms"
+            )
+
+        with latency_col3:
+
+            st.metric(
+                "Latency Reduction",
+                f"{latency_reduction:.1f}%",
+                delta=f"{latency_saved:.0f} ms"
+            )
+
+        # -------------------------------------------------
+        # Latency range
+        # -------------------------------------------------
+
+        st.markdown(
+            "### Latency Range"
+        )
+
+        range_col1, range_col2 = (
+            st.columns(2)
+        )
+
+        with range_col1:
+
+            st.write(
+                f"Original: "
+                f"**{min(original_latencies):.2f} ms** "
+                f"– "
+                f"**{max(original_latencies):.2f} ms**"
+            )
+
+        with range_col2:
+
+            st.write(
+                f"Compressed: "
+                f"**{min(compressed_latencies):.2f} ms** "
+                f"– "
+                f"**{max(compressed_latencies):.2f} ms**"
+            )
+
+        # -------------------------------------------------
+        # Latency chart
+        # -------------------------------------------------
+
+        latency_df = pd.DataFrame(
+            {
+                "Run": list(
+                    range(
+                        1,
+                        benchmark_runs + 1
+                    )
+                ),
+                "Original": original_latencies,
+                "TokenWise": compressed_latencies
+            }
+        )
+
+        st.markdown(
+            "### Run-by-Run Latency"
+        )
+
+        st.line_chart(
+            latency_df.set_index("Run")
+        )
+
+        # -------------------------------------------------
+        # Internal timing
+        # -------------------------------------------------
+
+        st.markdown(
+            "### 🔬 Ollama Internal Timing"
+        )
+
+        timing_col1, timing_col2 = (
+            st.columns(2)
+        )
+
+        with timing_col1:
+
+            st.metric(
+                "Prompt Evaluation Reduction",
+                f"{prompt_eval_reduction:.2f}%",
+                delta=f"{prompt_eval_saved:.2f} ms"
+            )
+
+            st.write(
+                f"Original prompt evaluation: "
+                f"**{original_prompt_eval_avg:.2f} ms**"
+            )
+
+            st.write(
+                f"Compressed prompt evaluation: "
+                f"**{compressed_prompt_eval_avg:.2f} ms**"
+            )
+
+        with timing_col2:
+
+            generation_saved = (
+                original_generation_avg
+                -
+                compressed_generation_avg
+            )
+
+            st.metric(
+                "Generation Time Difference",
+                f"{generation_saved:.2f} ms"
+            )
+
+            st.write(
+                f"Original generation: "
+                f"**{original_generation_avg:.2f} ms**"
+            )
+
+            st.write(
+                f"Compressed generation: "
+                f"**{compressed_generation_avg:.2f} ms**"
+            )
+
+        # -------------------------------------------------
+        # Token comparison
+        # -------------------------------------------------
+
+        st.markdown(
+            "## 🪙 LLM Token Usage"
+        )
+
+        token_col1, token_col2, token_col3 = (
+            st.columns(3)
+        )
+
+        with token_col1:
+
+            st.metric(
+                "Prompt Tokens Saved",
+                f"{prompt_tokens_saved:.0f}",
+                delta=f"{prompt_reduction:.2f}%"
+            )
+
+        with token_col2:
+
+            st.metric(
+                "Total Tokens Saved",
+                f"{total_tokens_saved:.0f}",
+                delta=f"{total_reduction:.2f}%"
+            )
+
+        with token_col3:
+
+            st.metric(
+                "Original → Compressed",
+                f"{original_avg_total:.0f} → "
+                f"{compressed_avg_total:.0f}"
+            )
+
+        st.write(
+            f"Original average prompt tokens: "
+            f"**{original_avg_prompt:.0f}**"
+        )
+
+        st.write(
+            f"Compressed average prompt tokens: "
+            f"**{compressed_avg_prompt:.0f}**"
+        )
+
+        st.write(
+            f"Original average completion tokens: "
+            f"**{original_avg_completion:.0f}**"
+        )
+
+        st.write(
+            f"Compressed average completion tokens: "
+            f"**{compressed_avg_completion:.0f}**"
+        )
+
+        # -------------------------------------------------
+        # Benchmark table
+        # -------------------------------------------------
+
+        st.markdown(
+            "### Individual Benchmark Runs"
+        )
+
+        benchmark_df = pd.DataFrame(
+            {
+                "Run": list(
+                    range(
+                        1,
+                        benchmark_runs + 1
+                    )
+                ),
+                "Original Latency (ms)": [
+                    round(
+                        value,
+                        2
+                    )
+                    for value in original_latencies
+                ],
+                "Compressed Latency (ms)": [
+                    round(
+                        value,
+                        2
+                    )
+                    for value in compressed_latencies
+                ],
+                "Original Prompt Tokens": original_prompt_tokens,
+                "Compressed Prompt Tokens": compressed_prompt_tokens,
+                "Original Total Tokens": original_total_tokens,
+                "Compressed Total Tokens": compressed_total_tokens
+            }
+        )
+
+        st.dataframe(
+            benchmark_df,
+            use_container_width=True,
+            hide_index=True
+        )
+
+        # -------------------------------------------------
+        # Answers
+        # -------------------------------------------------
+
+        st.markdown(
+            "## 🤖 LLM Answers"
+        )
+
+        original_answer = (
+            original_results[0].get(
+                "response",
+                ""
+            )
+            if original_results
+            else ""
+        )
+
+        compressed_answer = (
+            compressed_results[0].get(
+                "response",
+                ""
+            )
+            if compressed_results
+            else ""
+        )
+
+        answer_col1, answer_col2 = (
+            st.columns(2)
+        )
+
+        with answer_col1:
+
+            st.markdown(
+                "### Original Context"
+            )
+
+            st.info(
+                original_answer
+            )
+
+        with answer_col2:
+
+            st.markdown(
+                "### TokenWise Context"
+            )
+
+            st.success(
+                compressed_answer
+            )
+
+        # -------------------------------------------------
+        # Validation
+        # -------------------------------------------------
+
+        st.markdown(
+            "### Validation"
+        )
+
+        if compressed_tokens < original_tokens:
+
+            st.success(
+                "PASS: TokenWise reduced context size."
+            )
+
+        else:
+
+            st.error(
+                "FAIL: Context was not reduced."
+            )
+
+        if compressed_avg_prompt < original_avg_prompt:
+
+            st.success(
+                "PASS: LLM prompt tokens reduced."
+            )
+
+        else:
+
+            st.error(
+                "FAIL: LLM prompt tokens were not reduced."
+            )
+
+        if coverage_passed:
+
+            st.success(
+                "PASS: Query coverage preserved."
+            )
+
+        else:
+
+            st.warning(
+                "WARNING: Query coverage threshold not satisfied."
+            )
+
+        if compressed_avg_latency < original_avg_latency:
+
+            st.success(
+                "PASS: Average LLM latency decreased."
+            )
+
+        else:
+
+            st.info(
+                "INFO: Average LLM latency did not decrease "
+                "in this benchmark."
+            )
 
     # =====================================================
     # PIPELINE ARCHITECTURE
